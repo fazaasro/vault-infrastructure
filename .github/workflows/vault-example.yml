@@ -1,0 +1,85 @@
+name: Example Workflow with Vault Integration
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  VAULT_ADDR: http://vault.zazagaby.online
+
+jobs:
+  test-vault-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Vault CLI
+        run: |
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt update && sudo apt install -y vault
+
+      - name: Authenticate with Vault using AppRole
+        id: vault-auth
+        run: |
+          # Get Vault token using AppRole
+          VAULT_TOKEN=$(vault write -field=token auth/approle/login \
+            role_id="${{ secrets.VAULT_ROLE_ID }}" \
+            secret_id="${{ secrets.VAULT_SECRET_ID }}")
+
+          # Export token for subsequent steps
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Retrieve GLM API Key from Vault
+        id: get-glm-key
+        run: |
+          # Retrieve secret
+          GLM_API_KEY=$(vault kv get -field=api_key secret/glm-api-key)
+
+          # Set as output for use in other steps
+          echo "GLM_API_KEY=$GLM_API_KEY" >> $GITHUB_OUTPUT
+
+          # Or set as environment variable
+          echo "GLM_API_KEY=$GLM_API_KEY" >> $GITHUB_ENV
+
+      - name: Retrieve Cloudflare API Token from Vault
+        id: get-cf-token
+        run: |
+          # Retrieve secret
+          CF_API_TOKEN=$(vault kv get -field=api_token secret/cloudflare-api-token)
+          CF_ZONE_ID=$(vault kv get -field=zone_id secret/cloudflare-api-token)
+
+          # Set as outputs
+          echo "CF_API_TOKEN=$CF_API_TOKEN" >> $GITHUB_OUTPUT
+          echo "CF_ZONE_ID=$CF_ZONE_ID" >> $GITHUB_OUTPUT
+
+          # Set as environment variables
+          echo "CF_API_TOKEN=$CF_API_TOKEN" >> $GITHUB_ENV
+          echo "CF_ZONE_ID=$CF_ZONE_ID" >> $GITHUB_ENV
+
+      - name: Use retrieved secrets
+        run: |
+          echo "GLM API Key: ${GLM_API_KEY:0:10}..."  # Show only first 10 chars
+          echo "Cloudflare API Token: ${CF_API_TOKEN:0:10}..."
+          echo "Cloudflare Zone ID: $CF_ZONE_ID"
+
+          # Use the secrets in your workflow
+          # Example: curl -H "Authorization: Bearer $GLM_API_KEY" https://api.example.com
+
+      - name: Alternative: Use hashicorp/vault-action
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ env.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/glm-api-key api_key | GLM_API_KEY ;
+            secret/data/cloudflare-api-token api_token | CF_API_TOKEN ;
+            secret/data/cloudflare-api-token zone_id | CF_ZONE_ID
+
+      - name: Use secrets from vault-action
+        run: |
+          echo "GLM API Key (from vault-action): ${GLM_API_KEY:0:10}..."
+          echo "Cloudflare Token (from vault-action): ${CF_API_TOKEN:0:10}..."

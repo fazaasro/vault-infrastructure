@@ -1,0 +1,24 @@
+# Vault sensitive data - NEVER COMMIT THESE
+.vault-keys.txt
+.vault-approle.txt
+*.key
+*.pem
+*.crt
+
+# Docker volumes and data
+data/
+*.log
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*.backup
+*.backup.*
+vault-data-backup-*.tar.gz
+
+# OS files
+.DS_Store
+Thumbs.db
